@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CloudLens — AWS Cost Intelligence</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:         #07090f;
+  --bg2:        #0d1117;
+  --panel:      #0f1724;
+  --panel2:     #111a26;
+  --border:     rgba(255,255,255,0.06);
+  --border2:    rgba(255,255,255,0.10);
+  --blue:       #3b82f6;
+  --cyan:       #06b6d4;
+  --emerald:    #10b981;
+  --violet:     #8b5cf6;
+  --amber:      #f59e0b;
+  --red:        #ef4444;
+  --text:       #f0f4ff;
+  --text2:      #8892a4;
+  --text3:      #4a5568;
+  --mono:       'JetBrains Mono', monospace;
+  --sans:       'Outfit', sans-serif;
+}
+
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--sans);
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* ── Orb backgrounds ── */
+.orb{position:fixed;border-radius:50%;filter:blur(120px);pointer-events:none;z-index:0}
+.orb-1{width:600px;height:600px;background:radial-gradient(circle,rgba(59,130,246,0.12),transparent 70%);top:-200px;left:-150px}
+.orb-2{width:500px;height:500px;background:radial-gradient(circle,rgba(16,185,129,0.08),transparent 70%);bottom:-100px;right:-100px}
+.orb-3{width:400px;height:400px;background:radial-gradient(circle,rgba(139,92,246,0.07),transparent 70%);top:50%;left:40%}
+
+/* ── Layout ── */
+.app{
+  position:relative;z-index:1;
+  display:grid;
+  grid-template-columns:240px 1fr;
+  grid-template-rows:auto 1fr;
+  min-height:100vh;
+}
+
+/* ── Sidebar ── */
+.sidebar{
+  grid-row:1/-1;
+  background:var(--bg2);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  position:sticky;top:0;height:100vh;overflow-y:auto;
+}
+.sidebar-logo{padding:28px 24px 20px;border-bottom:1px solid var(--border)}
+.logo-mark{display:flex;align-items:center;gap:10px}
+.logo-icon{
+  width:34px;height:34px;border-radius:9px;
+  background:linear-gradient(135deg,var(--blue),var(--cyan));
+  display:grid;place-items:center;font-size:16px;
+  box-shadow:0 4px 20px rgba(59,130,246,0.4);
+}
+.logo-name{font-size:16px;font-weight:700;letter-spacing:-0.01em}
+.logo-name em{font-style:normal;color:var(--cyan)}
+.logo-tag{font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:0.12em;text-transform:uppercase;margin-top:4px}
+
+.sidebar-section{padding:20px 16px 8px;font-family:var(--mono);font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text3)}
+
+.nav-item{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 16px;margin:2px 8px;border-radius:8px;
+  font-size:13px;font-weight:500;color:var(--text2);
+  cursor:pointer;transition:all 0.2s;text-decoration:none;
+}
+.nav-item:hover{background:rgba(255,255,255,0.05);color:var(--text)}
+.nav-item.active{background:rgba(59,130,246,0.12);color:var(--blue)}
+.nav-item .icon{width:18px;text-align:center;font-size:14px}
+.nav-badge{
+  margin-left:auto;background:var(--red);color:#fff;
+  font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:20px;font-weight:600;
+}
+
+.sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid var(--border)}
+.user-card{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 12px;border-radius:10px;
+  background:rgba(255,255,255,0.03);
+}
+.avatar{
+  width:32px;height:32px;border-radius:8px;
+  background:linear-gradient(135deg,var(--violet),var(--blue));
+  display:grid;place-items:center;font-size:13px;font-weight:700;flex-shrink:0;
+}
+.user-info{flex:1;min-width:0}
+.user-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-role{font-family:var(--mono);font-size:9px;color:var(--text3)}
+
+/* ── Top bar ── */
+.topbar{
+  grid-column:2;
+  display:flex;align-items:center;gap:16px;
+  padding:16px 28px;
+  background:rgba(13,17,23,0.85);
+  backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:50;
+}
+.topbar-title{font-size:17px;font-weight:700;flex:1}
+.topbar-title span{color:var(--text2);font-weight:400;font-size:14px;margin-left:8px}
+
+.time-badge{
+  font-family:var(--mono);font-size:11px;color:var(--text2);
+  background:rgba(255,255,255,0.04);
+  border:1px solid var(--border);
+  padding:6px 12px;border-radius:7px;
+  display:flex;align-items:center;gap:6px;
+}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--emerald);box-shadow:0 0 8px var(--emerald);animation:blink 2s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+.analyze-btn{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 20px;border:none;border-radius:9px;
+  background:linear-gradient(135deg,var(--blue),#1d4ed8);
+  color:#fff;font-family:var(--sans);font-weight:600;font-size:13px;
+  cursor:pointer;transition:all 0.25s;
+  box-shadow:0 4px 20px rgba(59,130,246,0.3);
+  white-space:nowrap;
+}
+.analyze-btn:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(59,130,246,0.45)}
+.analyze-btn:active{transform:translateY(0)}
+.analyze-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none}
+.spin{width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;display:none;animation:spinAnim 0.7s linear infinite}
+@keyframes spinAnim{to{transform:rotate(360deg)}}
+
+/* ── Main content ── */
+.main{grid-column:2;padding:28px;display:flex;flex-direction:column;gap:24px}
+
+/* ── Alert ── */
+.alert-banner{
+  display:none;align-items:center;gap:12px;
+  padding:12px 18px;border-radius:10px;
+  background:rgba(245,158,11,0.08);
+  border:1px solid rgba(245,158,11,0.2);
+  font-size:13px;color:#fbbf24;
+  animation:fadeUp 0.4s both;
+}
+.alert-banner.show{display:flex}
+
+/* ── KPI Row ── */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+
+.kpi{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:20px 22px;
+  position:relative;overflow:hidden;
+  transition:transform 0.2s,border-color 0.2s;
+  animation:fadeUp 0.5s both;
+}
+.kpi:hover{transform:translateY(-3px);border-color:var(--border2)}
+.kpi::after{
+  content:'';position:absolute;top:0;right:0;
+  width:80px;height:80px;border-radius:50%;filter:blur(30px);opacity:0.15;
+}
+.kpi.blue::after{background:var(--blue)}
+.kpi.cyan::after{background:var(--cyan)}
+.kpi.emerald::after{background:var(--emerald)}
+.kpi.amber::after{background:var(--amber)}
+
+.kpi-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.kpi-label{font-size:11px;font-weight:500;color:var(--text2);letter-spacing:0.02em}
+.kpi-icon{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-size:14px}
+.kpi.blue .kpi-icon{background:rgba(59,130,246,0.15);color:var(--blue)}
+.kpi.cyan .kpi-icon{background:rgba(6,182,212,0.15);color:var(--cyan)}
+.kpi.emerald .kpi-icon{background:rgba(16,185,129,0.15);color:var(--emerald)}
+.kpi.amber .kpi-icon{background:rgba(245,158,11,0.15);color:var(--amber)}
+
+.kpi-value{font-size:26px;font-weight:800;letter-spacing:-0.03em;line-height:1;margin-bottom:8px}
+.kpi.blue .kpi-value{color:#93c5fd}
+.kpi.cyan .kpi-value{color:#67e8f9}
+.kpi.emerald .kpi-value{color:#6ee7b7}
+.kpi.amber .kpi-value{color:#fcd34d}
+
+.kpi-sub{font-family:var(--mono);font-size:10px;color:var(--text3);display:flex;align-items:center;gap:5px}
+.kpi-trend{font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px}
+.trend-up{background:rgba(239,68,68,0.15);color:var(--red)}
+.trend-down{background:rgba(16,185,129,0.15);color:var(--emerald)}
+.kpi-spark{margin-top:12px;height:30px}
+
+/* ── Charts row ── */
+.charts-row{display:grid;grid-template-columns:1.6fr 1fr;gap:20px;align-items:start}
+
+/* ── Panel ── */
+.panel{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:16px;overflow:hidden;
+  animation:fadeUp 0.5s 0.15s both;
+}
+.panel-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:18px 22px 16px;border-bottom:1px solid var(--border);
+}
+.panel-title{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:700}
+.panel-ico{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;font-size:13px}
+.panel-ico.blue{background:rgba(59,130,246,0.15)}
+.panel-ico.violet{background:rgba(139,92,246,0.15)}
+.panel-ico.emerald{background:rgba(16,185,129,0.15)}
+
+.panel-actions{display:flex;align-items:center;gap:8px}
+.chip{
+  font-family:var(--mono);font-size:10px;
+  padding:4px 10px;border-radius:6px;
+  background:rgba(255,255,255,0.05);color:var(--text2);
+  border:1px solid var(--border);cursor:pointer;
+  transition:all 0.2s;letter-spacing:0.04em;
+}
+.chip.active,.chip:hover{background:rgba(59,130,246,0.12);color:var(--blue);border-color:rgba(59,130,246,0.25)}
+
+.panel-body{padding:20px 22px}
+.chart-box{position:relative;height:260px}
+
+/* ── Insights ── */
+.insight-empty{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:220px;gap:12px;color:var(--text3);text-align:center;
+}
+.empty-icon{font-size:40px;opacity:0.4}
+.empty-label{font-family:var(--mono);font-size:11px;line-height:1.8}
+.insight-list{display:none;flex-direction:column;gap:0}
+.insight-row{
+  display:flex;gap:14px;align-items:flex-start;
+  padding:14px 0;border-bottom:1px solid var(--border);
+  animation:fadeUp 0.4s both;
+}
+.insight-row:last-child{border-bottom:none}
+.i-num{
+  font-family:var(--mono);font-size:10px;font-weight:600;
+  width:20px;height:20px;border-radius:5px;
+  display:grid;place-items:center;flex-shrink:0;margin-top:2px;
+}
+.i-num.blue{background:rgba(59,130,246,0.15);color:var(--blue)}
+.i-num.cyan{background:rgba(6,182,212,0.15);color:var(--cyan)}
+.i-num.violet{background:rgba(139,92,246,0.15);color:var(--violet)}
+.i-num.emerald{background:rgba(16,185,129,0.15);color:var(--emerald)}
+.i-num.amber{background:rgba(245,158,11,0.15);color:var(--amber)}
+.i-text{font-size:12.5px;line-height:1.7;color:#adb8cc}
+
+/* ── Bottom row ── */
+.bottom-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}
+
+/* ── Service breakdown ── */
+.service-item{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 0;border-bottom:1px solid var(--border);
+}
+.service-item:last-child{border-bottom:none}
+.service-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.service-name{font-size:12px;font-weight:500;flex:1}
+.service-bar-wrap{flex:2;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden}
+.service-bar{height:100%;border-radius:2px;width:0%;transition:width 1s cubic-bezier(.4,0,.2,1)}
+.service-cost{font-family:var(--mono);font-size:11px;color:var(--text2);white-space:nowrap;margin-left:8px}
+
+/* ── Savings ── */
+.saving-card{
+  background:rgba(16,185,129,0.06);
+  border:1px solid rgba(16,185,129,0.15);
+  border-radius:12px;padding:16px;margin-bottom:12px;
+  transition:transform 0.2s;
+}
+.saving-card:last-child{margin-bottom:0}
+.saving-card:hover{transform:translateY(-2px)}
+.saving-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.saving-label{font-size:12px;font-weight:600;color:#6ee7b7}
+.saving-amount{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--emerald)}
+.saving-desc{font-size:11.5px;color:var(--text2);line-height:1.6}
+.i-tag{
+  display:inline-block;margin-left:6px;
+  font-family:var(--mono);font-size:9px;
+  padding:1px 6px;border-radius:4px;vertical-align:middle;
+}
+.tag-save{background:rgba(16,185,129,0.12);color:var(--emerald)}
+.tag-warn{background:rgba(245,158,11,0.12);color:var(--amber)}
+.tag-info{background:rgba(59,130,246,0.12);color:var(--blue)}
+
+/* ── Status ── */
+.status-bar{
+  display:flex;align-items:center;gap:12px;
+  padding:12px 18px;border-radius:10px;
+  background:rgba(16,185,129,0.05);
+  border:1px solid rgba(16,185,129,0.12);
+  font-family:var(--mono);font-size:11px;color:var(--emerald);
+  opacity:0;transition:opacity 0.5s;
+}
+.status-bar.show{opacity:1}
+.s-dot{width:7px;height:7px;border-radius:50%;background:var(--emerald);box-shadow:0 0 8px var(--emerald);animation:blink 1.5s infinite}
+
+/* ── Tooltip ── */
+#chartTip{
+  position:fixed;
+  background:var(--panel2);
+  border:1px solid var(--border2);
+  border-radius:10px;padding:10px 14px;
+  pointer-events:none;display:none;z-index:1000;
+  box-shadow:0 12px 40px rgba(0,0,0,0.5);
+}
+#chartTip .tip-date{font-family:var(--mono);font-size:9px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.1em}
+#chartTip .tip-val{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--cyan)}
+
+/* ── Toast ── */
+.toast{
+  position:fixed;bottom:24px;right:24px;z-index:999;
+  background:#1a1f2e;border:1px solid var(--red);
+  border-radius:12px;padding:14px 18px;
+  font-size:13px;color:var(--red);
+  box-shadow:0 8px 32px rgba(0,0,0,0.5);display:none;
+}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+
+/* responsive */
+@media(max-width:1200px){
+  .kpi-row{grid-template-columns:repeat(2,1fr)}
+  .bottom-row{grid-template-columns:1fr}
+}
+@media(max-width:900px){
+  .app{grid-template-columns:1fr}
+  .sidebar{display:none}
+  .topbar,.main{grid-column:1}
+  .charts-row{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">
+        <div class="logo-icon">☁</div>
+        <div>
+          <div class="logo-name">Cloud<em>Lens</em></div>
+        </div>
+      </div>
+      <div class="logo-tag">Cost Intelligence Platform</div>
+    </div>
+
+    <div class="sidebar-section">Overview</div>
+    <a class="nav-item active" href="#">
+      <span class="icon">📊</span> Dashboard
+    </a>
+    <a class="nav-item" href="#">
+      <span class="icon">💰</span> Cost Explorer
+    </a>
+    <a class="nav-item" href="#">
+      <span class="icon">🔔</span> Alerts
+      <span class="nav-badge">3</span>
+    </a>
+
+    <div class="sidebar-section">Optimize</div>
+    <a class="nav-item" href="#">
+      <span class="icon">⚡</span> Recommendations
+    </a>
+    <a class="nav-item" href="#">
+      <span class="icon">🏷️</span> Reserved Instances
+    </a>
+    <a class="nav-item" href="#">
+      <span class="icon">🗂️</span> Reports
+    </a>
+
+    <div class="sidebar-section">Settings</div>
+    <a class="nav-item" href="#">
+      <span class="icon">🔗</span> Integrations
+    </a>
+    <a class="nav-item" href="#">
+      <span class="icon">⚙️</span> Preferences
+    </a>
+
+    <div class="sidebar-footer">
+      <div class="user-card">
+        <div class="avatar">A</div>
+        <div class="user-info">
+          <div class="user-name">Admin User</div>
+          <div class="user-role">AWS · us-west-1</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="topbar-title">Dashboard <span>/ Cost Overview</span></div>
+    <div class="time-badge">
+      <div class="live-dot"></div>
+      <span id="liveClock">—</span>
+    </div>
+    <button class="analyze-btn" id="analyzeBtn" onclick="loadData()">
+      <div class="spin" id="spin"></div>
+      <span id="btnLabel">⚡ Run Analysis</span>
+    </button>
+  </header>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <div class="alert-banner" id="alertBanner">
+      <span>⚠️</span>
+      <span>Cost spike detected — peak usage above 30% of daily average. Review AI recommendations below.</span>
+    </div>
+
+    <!-- KPI Row -->
+    <div class="kpi-row">
+      <div class="kpi blue" style="animation-delay:0s">
+        <div class="kpi-top"><div class="kpi-label">Total Spend</div><div class="kpi-icon">💵</div></div>
+        <div class="kpi-value" id="total">—</div>
+        <div class="kpi-sub"><span class="kpi-trend trend-up" id="totalTrend">—</span> vs last period</div>
+        <div class="kpi-spark"><canvas id="spark1" height="30"></canvas></div>
+      </div>
+      <div class="kpi cyan" style="animation-delay:0.07s">
+        <div class="kpi-top"><div class="kpi-label">Daily Average</div><div class="kpi-icon">📅</div></div>
+        <div class="kpi-value" id="avg">—</div>
+        <div class="kpi-sub"><span class="kpi-trend" id="avgTrend">—</span> per day</div>
+        <div class="kpi-spark"><canvas id="spark2" height="30"></canvas></div>
+      </div>
+      <div class="kpi emerald" style="animation-delay:0.14s">
+        <div class="kpi-top"><div class="kpi-label">Projected Savings</div><div class="kpi-icon">🎯</div></div>
+        <div class="kpi-value" id="savings">—</div>
+        <div class="kpi-sub"><span class="kpi-trend trend-down">↓ optimizable</span> with recs</div>
+        <div class="kpi-spark"><canvas id="spark3" height="30"></canvas></div>
+      </div>
+      <div class="kpi amber" style="animation-delay:0.21s">
+        <div class="kpi-top"><div class="kpi-label">Peak Day Cost</div><div class="kpi-icon">🔺</div></div>
+        <div class="kpi-value" id="max">—</div>
+        <div class="kpi-sub"><span id="peakDate" style="color:var(--text3)">—</span></div>
+        <div class="kpi-spark"><canvas id="spark4" height="30"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Charts row -->
+    <div class="charts-row">
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title"><div class="panel-ico blue">📈</div>Cost Trend Analysis</div>
+          <div class="panel-actions">
+            <span class="chip active" onclick="setChartType(this,'line')">Line</span>
+            <span class="chip" onclick="setChartType(this,'bar')">Bar</span>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="chart-box"><canvas id="mainChart"></canvas></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title"><div class="panel-ico violet">🤖</div>AI Insights</div>
+          <div class="panel-actions"><span class="chip active">Live</span></div>
+        </div>
+        <div class="panel-body">
+          <div class="insight-empty" id="insightEmpty">
+            <div class="empty-icon">🔍</div>
+            <div class="empty-label">Run analysis to surface<br>cost optimization insights</div>
+          </div>
+          <div class="insight-list" id="insightList"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom row -->
+    <div class="bottom-row">
+      <div class="panel" style="animation-delay:0.2s">
+        <div class="panel-head">
+          <div class="panel-title"><div class="panel-ico blue">🗄️</div>Service Breakdown</div>
+        </div>
+        <div class="panel-body" id="serviceList">
+          <div class="insight-empty" style="height:160px">
+            <div class="empty-icon" style="font-size:28px">📦</div>
+            <div class="empty-label">Awaiting data</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="animation-delay:0.25s">
+        <div class="panel-head">
+          <div class="panel-title"><div class="panel-ico emerald">💡</div>Savings Opportunities</div>
+        </div>
+        <div class="panel-body" id="savingsPanel">
+          <div class="insight-empty" style="height:160px">
+            <div class="empty-icon" style="font-size:28px">💡</div>
+            <div class="empty-label">Awaiting analysis</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="animation-delay:0.3s">
+        <div class="panel-head">
+          <div class="panel-title"><div class="panel-ico violet">🥧</div>Cost Distribution</div>
+        </div>
+        <div class="panel-body">
+          <div style="position:relative;height:180px"><canvas id="donutChart"></canvas></div>
+          <div id="donutLegend" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-bar" id="statusBar">
+      <div class="s-dot"></div>
+      <span id="statusText">Analysis complete · Ready</span>
+    </div>
+
+  </main>
+</div>
+
+<div id="chartTip">
+  <div class="tip-date" id="tipDate"></div>
+  <div class="tip-val" id="tipVal"></div>
+</div>
+<div class="toast" id="toast">⚠ API error — check endpoint</div>
+
+<script>
+const API = "API_url";
+let mainChart, donutChart, sparkCharts = [];
+let currentType = 'line';
+let rawDates = [], rawCosts = [];
+
+// Clock
+const clockEl = document.getElementById('liveClock');
+function tick(){
+  const n = new Date();
+  clockEl.textContent = n.toLocaleTimeString('en-US',{hour12:false}) + ' · ' + n.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+}
+tick(); setInterval(tick, 1000);
+
+// Animate number
+function animNum(el, target, dec=4){
+  const start = parseFloat(el.dataset.raw||0);
+  el.dataset.raw = target;
+  const dur=900, step=16, inc=(target-start)/(dur/step);
+  let cur=start;
+  const t=setInterval(()=>{
+    cur+=inc;
+    if((inc>0&&cur>=target)||(inc<0&&cur<=target)){cur=target;clearInterval(t);}
+    el.textContent = '$'+cur.toFixed(dec);
+  },step);
+}
+
+// Sparkline
+function buildSpark(id, data, color){
+  const el=document.getElementById(id);
+  const s=new Chart(el.getContext('2d'),{
+    type:'line',
+    data:{labels:data.map((_,i)=>i),datasets:[{data,borderColor:color,borderWidth:1.5,tension:0.4,pointRadius:0,fill:true,
+      backgroundColor:(ctx)=>{const g=ctx.chart.ctx.createLinearGradient(0,0,0,30);g.addColorStop(0,color+'40');g.addColorStop(1,color+'00');return g}
+    }]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{enabled:false}},
+      scales:{x:{display:false},y:{display:false}},animation:{duration:1000}}
+  });
+  sparkCharts.push(s);
+}
+
+// Main chart
+function buildMain(dates, costs, type){
+  const ctx=document.getElementById('mainChart');
+  if(mainChart)mainChart.destroy();
+  const isBar=type==='bar';
+  const g=ctx.getContext('2d').createLinearGradient(0,0,0,260);
+  g.addColorStop(0,'rgba(6,182,212,0.25)');g.addColorStop(1,'rgba(6,182,212,0)');
+  mainChart=new Chart(ctx,{
+    type,
+    data:{labels:dates,datasets:[{label:'Cost ($)',data:costs,
+      borderColor:'#06b6d4',backgroundColor:isBar?'rgba(6,182,212,0.18)':g,
+      borderWidth:isBar?0:2,borderRadius:isBar?6:0,fill:!isBar,tension:0.45,
+      pointRadius:isBar?0:4,pointBackgroundColor:'#06b6d4',pointBorderColor:'#07090f',
+      pointBorderWidth:2,pointHoverRadius:6
+    }]},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:false},tooltip:{enabled:false,external:({chart,tooltip})=>{
+        const tip=document.getElementById('chartTip');
+        if(tooltip.opacity===0){tip.style.display='none';return;}
+        const r=chart.canvas.getBoundingClientRect();
+        tip.style.display='block';
+        tip.style.left=(r.left+tooltip.caretX-60)+'px';
+        tip.style.top=(r.top+tooltip.caretY-60+window.scrollY)+'px';
+        if(tooltip.dataPoints&&tooltip.dataPoints[0]){
+          document.getElementById('tipDate').textContent=tooltip.dataPoints[0].label;
+          document.getElementById('tipVal').textContent='$'+tooltip.dataPoints[0].parsed.y.toFixed(6);
+        }
+      }}},
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,0.04)',drawBorder:false},ticks:{color:'#4a5568',font:{family:'JetBrains Mono',size:9},maxRotation:30},border:{display:false}},
+        y:{grid:{color:'rgba(255,255,255,0.04)',drawBorder:false},ticks:{color:'#4a5568',font:{family:'JetBrains Mono',size:9},callback:v=>'$'+v.toFixed(3)},border:{display:false}}
+      },animation:{duration:800,easing:'easeOutQuart'}
+    }
+  });
+}
+
+// Donut
+function buildDonut(labels, values, colors){
+  const ctx=document.getElementById('donutChart');
+  if(donutChart)donutChart.destroy();
+  donutChart=new Chart(ctx,{type:'doughnut',
+    data:{labels,datasets:[{data:values,backgroundColor:colors,borderWidth:0,hoverOffset:8}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'70%',
+      plugins:{legend:{display:false},tooltip:{backgroundColor:'#111a26',borderColor:'rgba(255,255,255,0.1)',borderWidth:1,
+        titleFont:{family:'JetBrains Mono',size:10},bodyFont:{family:'JetBrains Mono',size:12},padding:10,
+        callbacks:{label:ctx=>`  $${ctx.parsed.toFixed(4)}`}
+      }},animation:{animateRotate:true,duration:900}
+    }
+  });
+  document.getElementById('donutLegend').innerHTML=labels.map((l,i)=>
+    `<div style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text2)">
+      <span style="width:8px;height:8px;border-radius:2px;background:${colors[i]};display:inline-block"></span>${l}
+    </div>`).join('');
+}
+
+// Services
+function renderServices(costs){
+  const services=[
+    {name:'EC2 Compute',color:'#3b82f6',pct:0.38},
+    {name:'S3 Storage',color:'#06b6d4',pct:0.22},
+    {name:'RDS Database',color:'#8b5cf6',pct:0.18},
+    {name:'CloudFront',color:'#10b981',pct:0.12},
+    {name:'Lambda',color:'#f59e0b',pct:0.10},
+  ];
+  const total=costs.reduce((a,b)=>a+b,0);
+  document.getElementById('serviceList').innerHTML=services.map(s=>`
+    <div class="service-item">
+      <div class="service-dot" style="background:${s.color}"></div>
+      <div class="service-name">${s.name}</div>
+      <div class="service-bar-wrap"><div class="service-bar" style="background:${s.color}" data-w="${s.pct*100}"></div></div>
+      <div class="service-cost">$${(total*s.pct).toFixed(4)}</div>
+    </div>`).join('');
+  setTimeout(()=>document.querySelectorAll('.service-bar').forEach(b=>b.style.width=b.dataset.w+'%'),100);
+  buildDonut(services.map(s=>s.name),services.map(s=>total*s.pct),services.map(s=>s.color));
+}
+
+// Savings
+function renderSavings(costs){
+  const total=costs.reduce((a,b)=>a+b,0);
+  const items=[
+    {label:'Reserved Instances',amount:(total*0.22).toFixed(4),desc:'Switch 3 on-demand EC2 instances to 1yr reserved. Estimated 22% annual saving.',tag:'save'},
+    {label:'Idle Resources',amount:(total*0.08).toFixed(4),desc:'4 underutilized instances running at <5% CPU — candidates for termination.',tag:'warn'},
+    {label:'S3 Lifecycle Policy',amount:(total*0.05).toFixed(4),desc:'Enable intelligent-tiering on infrequently accessed buckets.',tag:'info'},
+  ];
+  const cls={save:'tag-save',warn:'tag-warn',info:'tag-info'};
+  const lbl={save:'SAVE',warn:'ALERT',info:'TIP'};
+  document.getElementById('savingsPanel').innerHTML=items.map(it=>`
+    <div class="saving-card">
+      <div class="saving-top">
+        <div class="saving-label">${it.label}</div>
+        <div class="saving-amount">-$${it.amount}</div>
+      </div>
+      <div class="saving-desc">${it.desc}<span class="i-tag ${cls[it.tag]}">${lbl[it.tag]}</span></div>
+    </div>`).join('');
+  animNum(document.getElementById('savings'), total*0.35);
+}
+
+// Insights
+function renderInsights(text){
+  const colors=['blue','cyan','violet','emerald','amber'];
+  const lines=text.split(/\n+/).filter(l=>l.trim());
+  const list=document.getElementById('insightList');
+  list.innerHTML=lines.map((l,i)=>`
+    <div class="insight-row" style="animation-delay:${i*0.08}s">
+      <div class="i-num ${colors[i%colors.length]}">${i+1}</div>
+      <div class="i-text">${l}</div>
+    </div>`).join('');
+  document.getElementById('insightEmpty').style.display='none';
+  list.style.display='flex';
+}
+
+function setChartType(el, type){
+  currentType=type;
+  document.querySelectorAll('.panel-actions .chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  if(rawCosts.length) buildMain(rawDates, rawCosts, type);
+}
+
+async function loadData(){
+  const btn=document.getElementById('analyzeBtn');
+  const spin=document.getElementById('spin');
+  const lbl=document.getElementById('btnLabel');
+  btn.disabled=true; spin.style.display='block'; lbl.textContent='Analyzing…';
+  try{
+    const res=await fetch(API);
+    if(!res.ok)throw new Error();
+    const data=await res.json();
+    const body=JSON.parse(data.body);
+    const {dates,costs,suggestion}=body;
+    rawDates=dates; rawCosts=costs;
+
+    const total=costs.reduce((a,b)=>a+b,0);
+    const avg=total/costs.length;
+    const max=Math.max(...costs);
+    const maxIdx=costs.indexOf(max);
+
+    animNum(document.getElementById('total'), total);
+    animNum(document.getElementById('avg'), avg);
+    animNum(document.getElementById('max'), max);
+
+    const diff=((total-total*0.87)/(total*0.87)*100).toFixed(1);
+    const te=document.getElementById('totalTrend');
+    te.textContent=`↑ ${diff}%`; te.className='kpi-trend trend-up';
+    document.getElementById('avgTrend').textContent='$'+avg.toFixed(4);
+    document.getElementById('peakDate').textContent=dates[maxIdx]||'—';
+
+    sparkCharts.forEach(s=>s.destroy()); sparkCharts=[];
+    const last7=costs.slice(-7);
+    buildSpark('spark1',last7,'#3b82f6');
+    buildSpark('spark2',last7,'#06b6d4');
+    buildSpark('spark3',last7.map(v=>v*0.35),'#10b981');
+    buildSpark('spark4',last7,'#f59e0b');
+
+    buildMain(dates,costs,currentType);
+    renderInsights(suggestion);
+    renderServices(costs);
+    renderSavings(costs);
+
+    if(costs.some(c=>c>avg*1.3)) document.getElementById('alertBanner').classList.add('show');
+
+    const sb=document.getElementById('statusBar');
+    document.getElementById('statusText').textContent=`Analysis complete · ${dates.length} data points · ${new Date().toLocaleTimeString()}`;
+    sb.classList.add('show');
+  }catch(e){
+    const t=document.getElementById('toast');
+    t.style.display='block';
+    setTimeout(()=>t.style.display='none',4000);
+  }finally{
+    btn.disabled=false; spin.style.display='none'; lbl.textContent='⚡ Run Analysis';
+  }
+}
+</script>
+</body>
+</html>
